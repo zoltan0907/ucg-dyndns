@@ -52,26 +52,6 @@ services:
 
         def check_ip_matches_host(target_ip, hostname):
             """
-            Prüft, ob eine bestimmte IP-Adresse zu einem Hostnamen gehört.
-            """
-            try:
-                # socket.gethostbyname_ex gibt ein Tupel zurück: 
-                # (primärer_hostname, alias_liste, ip_adressen_liste)
-                _, _, resolved_ips = socket.gethostbyname_ex(hostname)
-                
-                # Prüfen, ob die gesuchte IP in der Liste der aufgelösten IPs ist
-                if target_ip in resolved_ips:
-                    return True, resolved_ips
-                else:
-                    return False, resolved_ips
-                    
-            except socket.gaierror as e:
-                # Wird ausgelöst, wenn der Hostname nicht existiert oder kein DNS-Server erreichbar ist
-                print(f"Fehler: {e}")
-                return False, []
-
-        def check_ip_matches_host_v6(target_ip, hostname):
-            """
             Prüft, ob eine bestimmte IPv4- oder IPv6-Adresse zu einem Hostnamen gehört.
             """
             try:
