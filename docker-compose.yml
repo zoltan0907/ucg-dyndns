@@ -151,3 +151,4 @@ services:
         ENTRYPOINT ["python", "-u", "update_dyndns.py"]
 
     env_file: "ucg-dyndns-updater.env"
+    
