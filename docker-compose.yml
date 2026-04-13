@@ -1,0 +1,153 @@
+services:
+  updater:
+    container_name: ucg-dyndns-updater
+    network_mode: "host"
+    restart: unless-stopped
+    build:
+      context: .
+      dockerfile_inline: |
+        FROM python:3.11-alpine
+        RUN apk add --no-cache iproute2
+        WORKDIR /app
+        
+        COPY <<EOF /app/update_dyndns.py
+        import subprocess
+        import ipaddress
+        import os
+        import urllib.request
+        import time
+        import argparse
+        import sys
+        import socket
+
+        def get_gateway_mac(interface):
+            try:
+                output = subprocess.check_output(f"ip -6 neigh show dev {interface}", shell=True).decode()
+                for line in output.splitlines():
+                    if "router" in line and "lladdr" in line:
+                        parts = line.split()
+                        idx = parts.index("lladdr")
+                        return parts[idx + 1]
+            except Exception as e:
+                print(f"Fehler beim Ermitteln der Gateway-MAC: {e}")
+            return None
+
+        def mac_to_eui64_suffix(mac):
+            parts = mac.split(':')
+            parts[0] = f"{int(parts[0], 16) ^ 0x02:02x}"
+            return f"{parts[0]}{parts[1]}:{parts[2]}ff:fe{parts[3]}:{parts[4]}{parts[5]}"
+
+        def get_ipv6_prefix(interface):
+            try:
+                output = subprocess.check_output(f"ip -6 addr show dev {interface} scope global", shell=True).decode()
+                for line in output.splitlines():
+                    if "inet6" in line:
+                        ip_with_prefix = line.split()[1] 
+                        network = ipaddress.IPv6Network(ip_with_prefix, strict=False)
+                        # Wir extrahieren den Präfix-Teil (z.B. 2001:db8:a:b)
+                        return str(network.network_address).rstrip(':')
+            except Exception as e:
+                print(f"Fehler beim Ermitteln des Präfix: {e}")
+            return None
+
+        def check_ip_matches_host(target_ip, hostname):
+            """
+            Prüft, ob eine bestimmte IP-Adresse zu einem Hostnamen gehört.
+            """
+            try:
+                # socket.gethostbyname_ex gibt ein Tupel zurück: 
+                # (primärer_hostname, alias_liste, ip_adressen_liste)
+                _, _, resolved_ips = socket.gethostbyname_ex(hostname)
+                
+                # Prüfen, ob die gesuchte IP in der Liste der aufgelösten IPs ist
+                if target_ip in resolved_ips:
+                    return True, resolved_ips
+                else:
+                    return False, resolved_ips
+                    
+            except socket.gaierror as e:
+                # Wird ausgelöst, wenn der Hostname nicht existiert oder kein DNS-Server erreichbar ist
+                print(f"Fehler: {e}")
+                return False, []
+
+        def sync_dyndns(interface, update_url_template, hostname, key, manual_suffix=None):
+            prefix = get_ipv6_prefix(interface)
+            if not prefix:
+                print("Update übersprungen: Präfix nicht gefunden.")
+                return False
+
+            if manual_suffix:
+                # Suffix säubern (muss mit : oder :: beginnen)
+                s = manual_suffix if manual_suffix.startswith(':') else f":{manual_suffix}"
+                raw_ip = f"{prefix}{s}"
+                print(f"Nutze manuellen Suffix: {s}")
+            else:
+                mac = get_gateway_mac(interface)
+                if not mac:
+                    print("Update übersprungen: Weder Suffix angegeben noch Gateway-MAC gefunden.")
+                    return False
+                raw_ip = f"{prefix}:{mac_to_eui64_suffix(mac)}"
+                print(f"Nutze berechneten EUI-64 Suffix von MAC: {mac}")
+
+            try:
+                ucg_ipv6 = str(ipaddress.IPv6Address(raw_ip))
+
+                is_match, alle_ips = check_ip_matches_host(ucg_ipv6, mein_host)
+
+                print(f"Synchronisiere IP: {ucg_ipv6}")
+                
+                final_url = update_url_template.replace("<ip>", ucg_ipv6).replace("<hostname>", hostname).replace("<key>", key)
+                req = urllib.request.Request(final_url, headers={'User-Agent': 'UCG-DynDNS-Updater'})
+                with urllib.request.urlopen(req, timeout=10) as response:
+                    print(f"Erfolg! Antwort: {response.read().decode('utf-8').strip()}")
+                    return True
+            except Exception as e:
+                print(f"Fehler: {e}")
+                return False
+
+        def main():
+            env_interval = int(os.environ.get("INTERVAL", 300))
+            env_interface = os.environ.get("INTERFACE", "eth0")
+            env_update_url = os.environ.get("UPDATE_URL", "https://ipv64.net/nic/update?key=<key>&hostname=<hostname>&ip6=<ip>")
+            env_suffix = os.environ.get("HOST_SUFFIX")
+            env_hostname = os.environ.get("HOSTNAME")
+            env_key = os.environ.get("KEY")
+            
+            parser = argparse.ArgumentParser(description='UCG IPv6 DynDNS Service')
+            parser.add_argument('-i', '--interval', type=int, default=env_interval)
+            parser.add_argument('-n', '--interface', type=str, default=env_interface)
+            parser.add_argument('-k', '--key', type=str, default=env_key, dest='key')
+            parser.add_argument('-u', '--update-url', type=str, default=env_update_url, dest='update_url')
+            parser.add_argument('-h', '--hostname', type=str, default=env_hostname)
+            parser.add_argument('-s', '--suffix', type=str, default=env_suffix,
+                                help='Manueller Host-Anteil (z.B. ::1 oder 1)')
+            
+            args = parser.parse_args()
+
+            if not args.update_url:
+                print("FEHLER: UPDATE_URL nicht gesetzt.")
+                sys.exit(1)
+
+            if not args.key:
+                print("FEHLER: KEY nicht gesetzt.")
+                sys.exit(1)
+
+            if not args.hostname:
+                print("FEHLER: HOSTNAME nicht gesetzt.")
+                sys.exit(1)
+
+            print(f"Service gestartet (Interface: {args.interface}, Intervall: {args.interval}s)")
+            if args.suffix:
+                print(f"Konfigurierter Host-Suffix: {args.suffix}")
+            
+            while True:
+                sync_dyndns(args.interface, args.update_url, args.hostname, args.key, args.suffix)
+                time.sleep(args.interval)
+
+        if __name__ == "__main__":
+            main()
+        EOF
+        
+        ENTRYPOINT ["python", "-u", "update_dyndns.py"]
+
+    env_file: "ucg-dyndns-updater.env"
