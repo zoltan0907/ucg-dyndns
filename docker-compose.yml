@@ -92,7 +92,7 @@ services:
             try:
                 ucg_ipv6 = str(ipaddress.IPv6Address(raw_ip))
 
-                is_match, alle_ips = check_ip_matches_host(ucg_ipv6, mein_host)
+                is_match, alle_ips = check_ip_matches_host(ucg_ipv6, hostname)
 
                 print(f"Synchronisiere IP: {ucg_ipv6}")
                 
