@@ -118,7 +118,7 @@ services:
             parser.add_argument('-n', '--interface', type=str, default=env_interface)
             parser.add_argument('-k', '--key', type=str, default=env_key, dest='key')
             parser.add_argument('-u', '--update-url', type=str, default=env_update_url, dest='update_url')
-            parser.add_argument('-h', '--hostname', type=str, default=env_hostname)
+            parser.add_argument('--hostname', type=str, default=env_hostname)
             parser.add_argument('-s', '--suffix', type=str, default=env_suffix,
                                 help='Manueller Host-Anteil (z.B. ::1 oder 1)')
             
@@ -151,4 +151,3 @@ services:
         ENTRYPOINT ["python", "-u", "update_dyndns.py"]
 
     env_file: "ucg-dyndns-updater.env"
-    
