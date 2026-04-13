@@ -70,6 +70,33 @@ services:
                 print(f"Fehler: {e}")
                 return False, []
 
+        def check_ip_matches_host_v6(target_ip, hostname):
+            """
+            Prüft, ob eine bestimmte IPv4- oder IPv6-Adresse zu einem Hostnamen gehört.
+            """
+            try:
+                # socket.getaddrinfo liefert eine Liste von 5-Tupeln zurück.
+                # Format: (family, type, proto, canonname, sockaddr)
+                addr_info = socket.getaddrinfo(hostname, None)
+                
+                # Wir extrahieren nur die IPs. 'sockaddr' ist das 5. Element (Index 4).
+                # Bei IPv4 ist sockaddr (IP, Port), bei IPv6 (IP, Port, Flowinfo, ScopeID).
+                # In beiden Fällen steht die IP-Adresse an der ersten Stelle (Index 0).
+                
+                # Wir nutzen ein Set, um doppelte IPs herauszufiltern, da getaddrinfo 
+                # oft dieselbe IP für verschiedene Socket-Typen (TCP, UDP) zurückgibt.
+                resolved_ips = list(set([info[4][0] for info in addr_info]))
+                
+                if target_ip in resolved_ips:
+                    return True, resolved_ips
+                else:
+                    return False, resolved_ips
+                    
+            except socket.gaierror:
+                # Host nicht gefunden oder Netzwerkfehler
+                print(f"Fehler: {e}")
+                return False, []
+
         def sync_dyndns(interface, update_url_template, hostname, key, manual_suffix=None):
             prefix = get_ipv6_prefix(interface)
             if not prefix:
