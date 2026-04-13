@@ -120,14 +120,14 @@ services:
                 ucg_ipv6 = str(ipaddress.IPv6Address(raw_ip))
 
                 is_match, alle_ips = check_ip_matches_host(ucg_ipv6, hostname)
-
-                print(f"Synchronisiere IP: {ucg_ipv6}")
-                
-                final_url = update_url_template.replace("<ip>", ucg_ipv6).replace("<hostname>", hostname).replace("<key>", key)
-                req = urllib.request.Request(final_url, headers={'User-Agent': 'UCG-DynDNS-Updater'})
-                with urllib.request.urlopen(req, timeout=10) as response:
-                    print(f"Erfolg! Antwort: {response.read().decode('utf-8').strip()}")
-                    return True
+                if not is_match:
+                    print(f"Synchronisiere IP: {ucg_ipv6}")
+                    
+                    final_url = update_url_template.replace("<ip>", ucg_ipv6).replace("<hostname>", hostname).replace("<key>", key)
+                    req = urllib.request.Request(final_url, headers={'User-Agent': 'UCG-DynDNS-Updater'})
+                    with urllib.request.urlopen(req, timeout=10) as response:
+                        print(f"Erfolg! Antwort: {response.read().decode('utf-8').strip()}")
+                        return True
             except Exception as e:
                 print(f"Fehler: {e}")
                 return False
